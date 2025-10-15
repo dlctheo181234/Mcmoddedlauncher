@@ -1,0 +1,15 @@
+# Ignorer les dépendances Node.js
+node_modules/
+
+# Dossiers de build / distribution
+dist/
+build/
+out/
+
+# Fichiers temporaires
+*.log
+.DS_Store
+
+# Cache Electron / npm
+.cache/
+npm-debug.log*

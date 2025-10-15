@@ -1,0 +1,29 @@
+{
+  "name": "mcmoddedlauncher",
+  "version": "1.0.0",
+  "description": "launcher moddé",
+  "keywords": [],
+  "homepage": "https://github.com/dlctheo181234/Mcmoddedlauncher#readme",
+  "bugs": {
+    "url": "https://github.com/dlctheo181234/Mcmoddedlauncher/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dlctheo181234/Mcmoddedlauncher.git"
+  },
+  "license": "ISC",
+  "author": "Théo De la chapelle",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "child_process": "^1.0.2",
+    "electron": "^38.3.0",
+    "minecraft-launcher-core": "^3.18.2",
+    "node-fetch": "^3.3.2"
+  }
+}
