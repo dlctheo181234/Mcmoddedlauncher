@@ -19,11 +19,10 @@ document.getElementById('login').addEventListener('click', async () => {
   }
 });
 document.getElementById('launch').addEventListener('click', async () => {
-  const version = document.getElementById('version').value || "1.21.1";
 
   const log = document.getElementById('log');
   log.textContent = "Lancement en cours...\n";
 
-  const result = await ipcRenderer.invoke('launch-game', { version, useMicrosoft, url: MODPACK_URL });
+  const result = await ipcRenderer.invoke('launch-game', { useMicrosoft, url: MODPACK_URL });
   log.textContent += result + "\n";
 });

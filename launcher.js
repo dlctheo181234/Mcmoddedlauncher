@@ -6,46 +6,57 @@ const AdmZip = require('adm-zip');
 const { spawn } = require('child_process');
 const launcher = new Client();
 
+const FIXED_VERSION = "1.21.1"; // <-- version Minecraft que tu veux lancer
+const FIXED_MODPACK_URL = "https://github.com/dlctheo181234/Server-Modpack/releases/download/Release/modpack.zip"; // ton modpack
+const FIXED_MODLOADER = "forge"; // ou "vanilla" si pas de modloader
+
 async function downloadModpack(url, targetDir) {
-  // Vérifie si le dossier existe
   if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
   console.log(`[INFO] Téléchargement du modpack depuis ${url}...`);
 
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Échec du téléchargement (${res.status})`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Échec du téléchargement (${res.status})`);
 
-    const buffer = await res.arrayBuffer();
-    const zipPath = path.join(targetDir, 'modpack.zip');
-    fs.writeFileSync(zipPath, Buffer.from(buffer));
-
-    console.log(`[INFO] Extraction du modpack...`);
-    const zip = new AdmZip(zipPath);
-    zip.extractAllTo(targetDir, true);
-    fs.unlinkSync(zipPath);
-
-    console.log(`[INFO] Modpack extrait dans ${targetDir}`);
-  } catch (err) {
-    console.error(`[ERREUR] Téléchargement modpack : ${err.message}`);
-    throw err;
+  const contentType = res.headers.get('content-type');
+  if (!contentType.includes('zip')) {
+    throw new Error(`Le fichier téléchargé n’est pas un ZIP (content-type: ${contentType})`);
   }
+
+  const buffer = await res.arrayBuffer();
+  const zipPath = path.join(targetDir, 'modpack.zip');
+  fs.writeFileSync(zipPath, Buffer.from(buffer));
+
+  console.log(`[INFO] Extraction du modpack...`);
+  const zip = new AdmZip(zipPath);
+  zip.extractAllTo(targetDir, true);
+  fs.unlinkSync(zipPath);
+
+  console.log(`[INFO] Modpack extrait dans ${targetDir}`);
 }
 
 async function installNeoForgeIfNeeded(mcRoot) {
-  // Recherche du fichier .jar de NeoForge
-  const files = fs.readdirSync(mcRoot);
-  const installer = files.find(f => f.toLowerCase().includes('neoforge') && f.endsWith('.jar'));
+  console.log("[INFO] Vérification de l’installation de NeoForge...");
+
+  // Dossier versions
+  const versionDir = path.join(mcRoot, "versions", "neoforge");
+  if (fs.existsSync(path.join(versionDir, "neoforge.json"))) {
+    console.log("[INFO] ✅ NeoForge déjà installé, on continue...");
+    return;
+  }
+
+  // Recherche du jar d’installation
+  const allFiles = fs.readdirSync(mcRoot);
+  const installer = allFiles.find(f => f.toLowerCase().includes("neoforge") && f.endsWith(".jar"));
 
   if (!installer) {
-    console.log("[INFO] Aucun installateur NeoForge trouvé, on passe.");
-    return null;
+    console.warn("[WARN] Aucun installateur NeoForge trouvé dans le modpack !");
+    return;
   }
 
   const installerPath = path.join(mcRoot, installer);
   console.log(`[INFO] Installation de NeoForge via ${installerPath}...`);
 
-  // Lancer le jar NeoForge avec Java
   await new Promise((resolve, reject) => {
     const java = spawn('java', ['-jar', installerPath, '--installClient'], { cwd: mcRoot });
 
@@ -54,7 +65,7 @@ async function installNeoForgeIfNeeded(mcRoot) {
 
     java.on('close', code => {
       if (code === 0) {
-        console.log("[INFO] NeoForge installé avec succès !");
+        console.log("[INFO] ✅ NeoForge installé avec succès !");
         resolve();
       } else {
         reject(new Error(`Échec de l’installation NeoForge (code ${code})`));
@@ -62,11 +73,13 @@ async function installNeoForgeIfNeeded(mcRoot) {
     });
   });
 
-  return installerPath;
+  if (!fs.existsSync(path.join(versionDir, "neoforge.json"))) {
+    throw new Error("NeoForge ne semble pas s’être installé correctement.");
+  }
 }
 
 async function launchMinecraft(options) {
-  const { version, modLoader, modpackUrl, auth } = options;
+  const { modpackUrl, auth, useMicrosoft } = options;
   const mcRoot = path.join(__dirname, 'minecraft');
 
   if (!fs.existsSync(mcRoot)) fs.mkdirSync(mcRoot, { recursive: true });
@@ -74,7 +87,7 @@ async function launchMinecraft(options) {
   // 1️⃣ Télécharger et extraire le modpack
   if (modpackUrl) {
     try {
-      await downloadModpack(modpackUrl, mcRoot);
+      await downloadModpack(FIXED_MODPACK_URL, mcRoot);
     } catch (err) {
       console.error(`[ERREUR] Téléchargement modpack : ${err}`);
       return `Erreur : ${err.message}`;
@@ -82,7 +95,7 @@ async function launchMinecraft(options) {
   }
 
   // 2️⃣ Installer NeoForge s’il est présent
-  if (modLoader === 'forge') {
+  if (FIXED_MODLOADER === 'forge') {
     try {
       await installNeoForgeIfNeeded(mcRoot);
     } catch (err) {
@@ -91,6 +104,16 @@ async function launchMinecraft(options) {
     }
   }
 
+  const versionsDir = path.join(mcRoot, 'versions');
+  let customVersion = FIXED_VERSION;
+
+  if (fs.existsSync(versionsDir)) {
+    const found = fs.readdirSync(versionsDir).find(v => v.toLowerCase().includes('neoforge'));
+    if (found) {
+      customVersion = found;
+      console.log(`[INFO] Version NeoForge détectée : ${found}`);
+    }
+  }
   
   // 3️⃣ Lancer Minecraft
   const launchOptions = {
@@ -98,9 +121,9 @@ async function launchMinecraft(options) {
     authorization: auth ? auth.mclc() : undefined,
     root: mcRoot,
     version: {
-      number: version || "1.21.1",
+      number: FIXED_VERSION,
       type: "release",
-      custom: "neoforge"
+      custom: customVersion,
     },
     memory: {
       max: "4G",
