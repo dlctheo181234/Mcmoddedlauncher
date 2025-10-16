@@ -1,4 +1,5 @@
 const { ipcRenderer } = require('electron');
+const MODPACK_URL = "https://www.dropbox.com/scl/fi/to9be345kq3f8umiilja3/Modpack-V1.zip?rlkey=0fzclrw32zzpwp6rkv3dphpd1&st=ofu0volz&dl=1"; // remplace par ton lien zip
 
 let useMicrosoft = false;
 
@@ -23,6 +24,6 @@ document.getElementById('launch').addEventListener('click', async () => {
   const log = document.getElementById('log');
   log.textContent = "Lancement en cours...\n";
 
-  const result = await ipcRenderer.invoke('launch-game', { version, useMicrosoft });
+  const result = await ipcRenderer.invoke('launch-game', { version, useMicrosoft, url: MODPACK_URL });
   log.textContent += result + "\n";
 });

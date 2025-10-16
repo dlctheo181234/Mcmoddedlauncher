@@ -4,25 +4,32 @@ const fs = require('fs');
 const fetch = require('node-fetch');
 const AdmZip = require('adm-zip');
 const { spawn } = require('child_process');
-
 const launcher = new Client();
 
-async function downloadModpack(githubUrl, targetDir) {
-  console.log(`[INFO] Téléchargement du modpack depuis ${githubUrl}...`);
+async function downloadModpack(url, targetDir) {
+  // Vérifie si le dossier existe
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
-  const res = await fetch(githubUrl);
-  if (!res.ok) throw new Error(`Échec du téléchargement (${res.status})`);
+  console.log(`[INFO] Téléchargement du modpack depuis ${url}...`);
 
-  const buffer = await res.arrayBuffer();
-  const zipPath = path.join(targetDir, 'modpack.zip');
-  fs.writeFileSync(zipPath, Buffer.from(buffer));
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Échec du téléchargement (${res.status})`);
 
-  console.log(`[INFO] Extraction du modpack...`);
-  const zip = new AdmZip(zipPath);
-  zip.extractAllTo(targetDir, true);
-  fs.unlinkSync(zipPath);
+    const buffer = await res.arrayBuffer();
+    const zipPath = path.join(targetDir, 'modpack.zip');
+    fs.writeFileSync(zipPath, Buffer.from(buffer));
 
-  console.log(`[INFO] Modpack extrait dans ${targetDir}`);
+    console.log(`[INFO] Extraction du modpack...`);
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(targetDir, true);
+    fs.unlinkSync(zipPath);
+
+    console.log(`[INFO] Modpack extrait dans ${targetDir}`);
+  } catch (err) {
+    console.error(`[ERREUR] Téléchargement modpack : ${err.message}`);
+    throw err;
+  }
 }
 
 async function installNeoForgeIfNeeded(mcRoot) {
