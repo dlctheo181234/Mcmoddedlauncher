@@ -4,7 +4,6 @@ const fs = require('fs');
 const fetch = require('node-fetch');
 const AdmZip = require('adm-zip');
 const { spawn } = require('child_process');
-const { Auth } = require("msmc");
 
 const launcher = new Client();
 

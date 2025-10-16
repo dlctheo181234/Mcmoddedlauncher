@@ -11,11 +11,12 @@ document.getElementById('login').addEventListener('click', async () => {
   if (result.success) {
     log.textContent += `Connecté en tant que ${result.name}\n`;
     useMicrosoft = true;
+    const HeadUrl = `https://minotar.net/helm/${result.pp}/64.png`;
+    document.getElementById('HeadUrl').src = HeadUrl; // <img id="playerSkin">
   } else {
     log.textContent += `Échec de la connexion : ${result.error}\n`;
   }
 });
-
 document.getElementById('launch').addEventListener('click', async () => {
   const version = document.getElementById('version').value || "1.21.1";
 

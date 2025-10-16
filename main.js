@@ -23,13 +23,13 @@ app.whenReady().then(() => {
 
 ipcMain.handle('login-microsoft', async () => {
   try {
-    const authManager = new Auth("select_account");
+    const authManager = new Auth("electron");
     // "electron" permet d’ouvrir la fenêtre de login dans Electron
     const xboxManager = await authManager.launch("electron");
     const mcAuth = await xboxManager.getMinecraft();
 
     cachedAuth = mcAuth; // stocke le token pour le lancement
-    return { success: true, name: mcAuth.profile.name };
+    return { success: true, name: mcAuth.profile.name, pp: mcAuth.profile.id };
   } catch (err) {
     console.error(`[ERREUR] Auth Microsoft : ${err}`);
     return { success: false, error: err.message };
