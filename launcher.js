@@ -1,9 +1,10 @@
-const { Client, Authenticator } = require('minecraft-launcher-core');
+const { Client } = require('minecraft-launcher-core');
 const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const AdmZip = require('adm-zip');
 const { spawn } = require('child_process');
+const { Auth } = require("msmc");
 
 const launcher = new Client();
 
@@ -59,7 +60,7 @@ async function installNeoForgeIfNeeded(mcRoot) {
 }
 
 async function launchMinecraft(options) {
-  const { username, version, modLoader, modpackUrl } = options;
+  const { version, modLoader, modpackUrl, auth } = options;
   const mcRoot = path.join(__dirname, 'minecraft');
 
   if (!fs.existsSync(mcRoot)) fs.mkdirSync(mcRoot, { recursive: true });
@@ -84,12 +85,14 @@ async function launchMinecraft(options) {
     }
   }
 
+  
   // 3️⃣ Lancer Minecraft
   const launchOptions = {
-    authorization: Authenticator.getAuth(username || "Player"),
+    clientPackage: null,
+    authorization: auth ? auth.mclc() : undefined,
     root: mcRoot,
     version: {
-      number: version || "1.20.1",
+      number: version || "1.21.1",
       type: "release",
       custom: "neoforge"
     },
@@ -105,7 +108,7 @@ async function launchMinecraft(options) {
   launcher.on('data', e => console.log(`[DATA] ${e}`));
   launcher.on('error', e => console.error(`[ERROR] ${e}`));
 
-  return `Minecraft NeoForge lancé avec le modpack GitHub 🎮`;
+  return `Minecraft NeoForge lancé avec le modpack GitHub 🎮 ${useMicrosoft ? "compte Microsoft" : "mode hors ligne"}`;
 }
 
 module.exports = { launchMinecraft };
