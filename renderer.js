@@ -1,5 +1,5 @@
 const { ipcRenderer } = require('electron');
-const MODPACK_URL = "https://github.com/dlctheo181234/Server-Modpack/releases/download/Release/modpack.zip";
+const MODPACK_URL = "https://download1531.mediafire.com/wzdbcfjel2qgCzlCfCV9qluAgT4Mk8lUMayWPH18L9ZnqExt69rEimmmOQ-j5V7OgA0ZqDkhgYAFwtkhiOcbyBHRCfUb5pZkfc1ex3W80jY2g4y-5znWdt-MiWokS8NbMk3EnI6FiD2eT-s29yY0M7B438DEVMvC1p0PGIPyA_o/3sxeftgtpvvamph/modpack.zip";
 
 let useMicrosoft = false;
 

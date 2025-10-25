@@ -8,41 +8,42 @@ const { spawn } = require('child_process');
 const launcher = new Client();
 
 const FIXED_VERSION = "1.21.1";
-const FIXED_MODPACK_URL = "https://github.com/dlctheo181234/Server-Modpack/releases/download/Release/modpack.zip";
+const FIXED_MODPACK_URL = "https://download1531.mediafire.com/wzdbcfjel2qgCzlCfCV9qluAgT4Mk8lUMayWPH18L9ZnqExt69rEimmmOQ-j5V7OgA0ZqDkhgYAFwtkhiOcbyBHRCfUb5pZkfc1ex3W80jY2g4y-5znWdt-MiWokS8NbMk3EnI6FiD2eT-s29yY0M7B438DEVMvC1p0PGIPyA_o/3sxeftgtpvvamph/modpack.zip";
 
 function downloadFile(url) {
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http;
-    
+
     const request = protocol.get(url, (response) => {
-      if (response.statusCode === 301 || response.statusCode === 302) {
-        return downloadFile(response.headers.location).then(resolve).catch(reject);
+      // Suivre redirections
+      if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
+        const redirectUrl = response.headers.location;
+        console.log(`[INFO] Redirection vers: ${redirectUrl}`);
+        return downloadFile(redirectUrl).then(resolve).catch(reject);
       }
-      
+
       if (response.statusCode !== 200) {
         reject(new Error(`Échec du téléchargement (${response.statusCode})`));
         return;
       }
 
       const chunks = [];
-      let downloaded = 0;
-      const total = parseInt(response.headers['content-length'], 10);
-      
-      response.on('data', chunk => {
-        chunks.push(chunk);
-        downloaded += chunk.length;
-        if (total) {
-          const percent = ((downloaded / total) * 100).toFixed(1);
-          process.stdout.write(`\r[INFO] Téléchargement: ${percent}%`);
-        }
-      });
-      
+      response.on('data', chunk => chunks.push(chunk));
       response.on('end', () => {
-        console.log('\n[INFO] ✅ Téléchargement terminé');
-        resolve(Buffer.concat(chunks));
+        const buffer = Buffer.concat(chunks);
+
+        // Vérifie que ce n’est pas une page HTML déguisée
+        const head = buffer.slice(0, 100).toString();
+        if (head.includes('<!DOCTYPE html') || head.includes('<html')) {
+          reject(new Error("Le lien Dropbox ne fournit pas un fichier ZIP (probablement une page HTML)."));
+          return;
+        }
+
+        resolve(buffer);
       });
-      response.on('error', reject);
-    }).on('error', reject);
+    });
+
+    request.on('error', reject);
   });
 }
 
@@ -51,19 +52,19 @@ async function downloadModpack(url, targetDir) {
   
   if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
-  console.log(`[INFO] 📥 Téléchargement du modpack...`);
+  console.log(`[INFO] Téléchargement du modpack...`);
 
   const buffer = await downloadFile(url);
   const zipPath = path.join(targetDir, 'modpack.zip');
   fs.writeFileSync(zipPath, buffer);
 
-  console.log(`[INFO] 📦 Extraction du modpack...`);
+  console.log(`[INFO] Extraction du modpack...`);
   const zip = new AdmZip(zipPath);
   zip.extractAllTo(targetDir, true);
   fs.unlinkSync(zipPath);
 
   fs.writeFileSync(markerFile, new Date().toISOString());
-  console.log(`[INFO] ✅ Modpack extrait dans ${targetDir}`);
+  console.log(`[INFO] Modpack extrait dans ${targetDir}`);
   return true;
 }
 
@@ -84,7 +85,7 @@ function findForgeVersion(mcRoot) {
   for (const forgeFolder of forgeFolders.sort((a, b) => b.length - a.length)) {
     const jsonPath = path.join(versionsDir, forgeFolder, `${forgeFolder}.json`);
     if (fs.existsSync(jsonPath)) {
-      console.log(`[INFO] ✅ Version Forge trouvée : ${forgeFolder}`);
+      console.log(`[INFO] Version Forge trouvée : ${forgeFolder}`);
       return forgeFolder;
     }
   }
@@ -110,13 +111,11 @@ async function installForge(installerPath, mcRoot) {
   console.log(`[INFO] Installateur: ${path.basename(installerPath)}`);
   console.log('[INFO] Cela peut prendre 2-3 minutes...');
 
-  // Créer la structure nécessaire
   const versionsDir = path.join(mcRoot, 'versions');
   if (!fs.existsSync(versionsDir)) {
     fs.mkdirSync(versionsDir, { recursive: true });
   }
 
-  // Créer un fichier launcher_profiles.json si inexistant
   const profilesPath = path.join(mcRoot, 'launcher_profiles.json');
   if (!fs.existsSync(profilesPath)) {
     const profiles = {
@@ -133,7 +132,6 @@ async function installForge(installerPath, mcRoot) {
   }
 
   return new Promise((resolve, reject) => {
-    // Extraire le contenu du JAR installer pour voir ce qu'il contient
     console.log('[INFO] Analyse de l\'installateur...');
     
     try {
@@ -141,7 +139,6 @@ async function installForge(installerPath, mcRoot) {
       const entries = installerZip.getEntries();
       console.log(`[INFO] Installateur contient ${entries.length} fichiers`);
       
-      // Chercher install_profile.json
       const profileEntry = entries.find(e => e.entryName.includes('install_profile.json'));
       if (profileEntry) {
         const profileContent = JSON.parse(profileEntry.getData().toString('utf8'));
@@ -151,12 +148,11 @@ async function installForge(installerPath, mcRoot) {
       console.log('[WARN] Impossible d\'analyser l\'installateur:', e.message);
     }
 
-    // Installation avec le chemin absolu vers le dossier minecraft
     const javaProcess = spawn('java', [
       '-jar', 
       installerPath, 
       '--installClient',
-      mcRoot  // Spécifier explicitement le dossier cible
+      mcRoot
     ], { 
       cwd: mcRoot
     });
@@ -180,9 +176,7 @@ async function installForge(installerPath, mcRoot) {
       console.log(`[FORGE] Processus termine avec le code ${code}`);
       console.log('[INFO] Recherche de la version installee...');
       
-      // Attendre un peu pour que les fichiers soient écrits
       setTimeout(() => {
-        // Vérifier dans TOUS les emplacements possibles
         const possiblePaths = [
           mcRoot,
           path.join(require('os').homedir(), 'AppData', 'Roaming', '.minecraft'),
@@ -195,7 +189,6 @@ async function installForge(installerPath, mcRoot) {
           if (forgeVersion) {
             console.log(`[INFO] Forge trouve dans: ${checkPath}`);
             
-            // Si trouvé ailleurs, copier vers notre dossier
             if (checkPath !== mcRoot) {
               console.log('[INFO] Copie des fichiers Forge...');
               const srcVersions = path.join(checkPath, 'versions', forgeVersion);
@@ -205,10 +198,8 @@ async function installForge(installerPath, mcRoot) {
                 fs.mkdirSync(path.join(mcRoot, 'versions'), { recursive: true });
               }
               
-              // Copier récursivement
               copyFolderSync(srcVersions, dstVersions);
               
-              // Copier les libraries aussi
               const srcLibs = path.join(checkPath, 'libraries');
               const dstLibs = path.join(mcRoot, 'libraries');
               if (fs.existsSync(srcLibs)) {
@@ -222,12 +213,11 @@ async function installForge(installerPath, mcRoot) {
           }
         }
         
-        // Pas trouvé
         console.error('[ERREUR] Forge non trouve apres installation');
         console.error('Output complet:', output);
         console.error('Erreurs:', errorOutput);
         reject(new Error('Installation Forge echouee - version non trouvee apres installation'));
-      }, 3000); // Attendre 3 secondes
+      }, 3000);
     });
 
     javaProcess.on('error', (err) => {
@@ -259,15 +249,66 @@ function copyFolderSync(src, dest) {
   }
 }
 
+async function ensureForgeLibraries(mcRoot, forgeJson) {
+  const librariesDir = path.join(mcRoot, 'libraries');
+  
+  if (!forgeJson.libraries) {
+    console.log('[INFO] Aucune librairie listee dans le JSON');
+    return;
+  }
+
+  console.log(`[INFO] Verification de ${forgeJson.libraries.length} librairies...`);
+  
+  let missingCount = 0;
+  const missingLibs = [];
+
+  for (const lib of forgeJson.libraries) {
+    if (!lib.downloads || !lib.downloads.artifact) {
+      continue;
+    }
+
+    const artifact = lib.downloads.artifact;
+    const libPath = path.join(librariesDir, artifact.path);
+
+    if (!fs.existsSync(libPath)) {
+      missingCount++;
+      missingLibs.push({ name: lib.name, url: artifact.url, path: libPath });
+    }
+  }
+
+  if (missingCount === 0) {
+    console.log('[INFO] Toutes les librairies sont presentes');
+    return;
+  }
+
+  console.log(`[INFO] ${missingCount} librairies manquantes, telechargement...`);
+
+  for (const lib of missingLibs) {
+    try {
+      console.log(`[INFO] Telechargement: ${lib.name}`);
+      const dir = path.dirname(lib.path);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      const data = await downloadFile(lib.url);
+      fs.writeFileSync(lib.path, data);
+      console.log(`[INFO]   OK`);
+    } catch (err) {
+      console.error(`[ERROR] Echec pour ${lib.name}: ${err.message}`);
+    }
+  }
+
+  console.log('[INFO] Telechargement des librairies termine');
+}
+
 async function ensureForgeInstalled(mcRoot) {
-  // Vérifier si Forge est déjà installé
   let forgeVersion = findForgeVersion(mcRoot);
   if (forgeVersion) {
     console.log(`[INFO] Forge deja installe: ${forgeVersion}`);
     return forgeVersion;
   }
 
-  // Chercher l'installateur
   const installerPath = findForgeInstaller(mcRoot);
   if (!installerPath) {
     throw new Error('Aucun installateur Forge trouve dans le modpack !\n\nVotre modpack.zip doit contenir un fichier *forge*installer*.jar');
@@ -275,7 +316,6 @@ async function ensureForgeInstalled(mcRoot) {
 
   console.log(`[INFO] Installateur trouve: ${path.basename(installerPath)}`);
 
-  // Installer Forge
   forgeVersion = await installForge(installerPath, mcRoot);
   
   if (!forgeVersion) {
@@ -296,17 +336,14 @@ async function launchMinecraft(options) {
     console.log('[INFO] Demarrage du launcher');
     console.log('[INFO] ========================================');
 
-    // 1️⃣ Télécharger et extraire le modpack
     console.log('[INFO] Etape 1/3 : Modpack');
     await downloadModpack(FIXED_MODPACK_URL, mcRoot);
 
-    // 2️⃣ Installer Forge si nécessaire
     console.log('[INFO] Etape 2/3 : Installation Forge');
     const forgeVersion = await ensureForgeInstalled(mcRoot);
     
     console.log(`[INFO] Version Forge : ${forgeVersion}`);
 
-    // 3️⃣ Lancer Minecraft
     console.log('[INFO] Etape 3/3 : Lancement du jeu');
 
     const authorization = auth ? auth.mclc() : {
@@ -317,32 +354,31 @@ async function launchMinecraft(options) {
       user_properties: '{}'
     };
 
-    // Vérifier que les fichiers Forge existent
     const forgeVersionDir = path.join(mcRoot, 'versions', forgeVersion);
     const forgeJsonPath = path.join(forgeVersionDir, `${forgeVersion}.json`);
-    const forgeJarPath = path.join(forgeVersionDir, `${forgeVersion}.jar`);
     
     console.log('[INFO] Verification des fichiers Forge:');
     console.log(`[INFO]   Dossier: ${forgeVersionDir}`);
     console.log(`[INFO]   JSON exists: ${fs.existsSync(forgeJsonPath)}`);
-    console.log(`[INFO]   JAR exists: ${fs.existsSync(forgeJarPath)}`);
     
     if (!fs.existsSync(forgeJsonPath)) {
       throw new Error(`Fichier JSON Forge manquant: ${forgeJsonPath}`);
     }
 
-    // Lire le JSON Forge
     const forgeJson = JSON.parse(fs.readFileSync(forgeJsonPath, 'utf8'));
     console.log(`[INFO] Version JSON: ${forgeJson.id}`);
     
-    // Vérifier si on a besoin de la version vanilla aussi
     let vanillaVersion = FIXED_VERSION;
     if (forgeJson.inheritsFrom) {
       vanillaVersion = forgeJson.inheritsFrom;
       console.log(`[INFO] Version vanilla requise: ${vanillaVersion}`);
     }
 
-    // Configuration de lancement optimisée pour Forge
+    // Vérifier et télécharger les librairies manquantes
+    console.log('[INFO] Verification des librairies Forge...');
+    await ensureForgeLibraries(mcRoot, forgeJson);
+
+    // Configuration avec les JVM arguments nécessaires pour NeoForge
     const launchOptions = {
       authorization: authorization,
       root: mcRoot,
@@ -351,10 +387,28 @@ async function launchMinecraft(options) {
         type: "release",
         custom: forgeVersion
       },
-      forge: forgeVersionDir,  // Pointer vers le DOSSIER de la version Forge
       memory: {
         max: "4G",
         min: "2G",
+      },
+      customArgs: [
+        // Arguments nécessaires pour NeoForge avec Java 17+
+        '--add-opens', 'java.base/java.lang.invoke=ALL-UNNAMED',
+        '--add-opens', 'java.base/jdk.internal.loader=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.net=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.nio=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.io=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.text=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.util=ALL-UNNAMED',
+        '--add-opens', 'java.base/jdk.internal.reflect=ALL-UNNAMED',
+        '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED',
+        '--add-opens', 'jdk.naming.dns/com.sun.jndi.dns=ALL-UNNAMED,java.naming',
+        '--add-opens', 'java.desktop/sun.awt.image=ALL-UNNAMED'
+      ],
+      overrides: {
+        detached: false
       }
     };
 
@@ -363,21 +417,87 @@ async function launchMinecraft(options) {
     console.log(`[INFO]   - Version Forge: ${forgeVersion}`);
     console.log(`[INFO]   - RAM: 2G-4G`);
     console.log(`[INFO]   - Compte: ${useMicrosoft ? 'Microsoft' : 'Hors ligne'}`);
+    console.log(`[INFO]   - Root: ${mcRoot}`);
+    
+    // Vérifier que le dossier mods existe
+    const modsDir = path.join(mcRoot, 'mods');
+    if (fs.existsSync(modsDir)) {
+      const mods = fs.readdirSync(modsDir).filter(f => f.endsWith('.jar'));
+      console.log(`[INFO]   - Mods charges: ${mods.length}`);
+      mods.forEach(mod => console.log(`[INFO]     * ${mod}`));
+    } else {
+      console.log('[INFO]   - Aucun dossier mods trouve');
+    }
+    
     console.log('[INFO] ========================================');
     console.log('[INFO] Lancement de Minecraft Forge...');
 
     launcher.launch(launchOptions);
 
-    launcher.on('debug', (e) => console.log(`[DEBUG] ${e}`));
-    launcher.on('data', (e) => console.log(`[GAME] ${e}`));
+    let gameOutput = '';
+    let gameErrors = '';
+    
+    launcher.on('arguments', (args) => {
+      console.log('[INFO] Arguments Java:');
+      console.log(args.join(' '));
+    });
+    
+    launcher.on('debug', (e) => {
+      const msg = e.toString();
+      console.log(`[DEBUG] ${msg}`);
+      if (msg.includes('Error') || msg.includes('Exception')) {
+        gameErrors += msg + '\n';
+      }
+    });
+    
+    launcher.on('data', (e) => {
+      const line = e.toString().trim();
+      gameOutput += line + '\n';
+      console.log(`[GAME] ${line}`);
+      
+      if (line.includes('ERROR') || line.includes('FATAL') || line.includes('Exception')) {
+        gameErrors += line + '\n';
+      }
+    });
+    
     launcher.on('progress', (e) => {
       console.log(`[PROGRESS] ${e.type}: ${e.task}/${e.total}`);
     });
+    
     launcher.on('close', (code) => {
       console.log(`[INFO] Minecraft ferme (code ${code})`);
+      
+      if (code !== 0) {
+        console.error('[INFO] ========================================');
+        console.error('[INFO] CRASH DETECTE');
+        console.error('[INFO] ========================================');
+        
+        if (gameErrors) {
+          console.error('[INFO] ERREURS DETECTEES:');
+          console.error(gameErrors);
+        }
+        
+        console.error('[INFO] Derniers logs (50 lignes):');
+        const lastLines = gameOutput.split('\n').filter(l => l.trim()).slice(-50);
+        lastLines.forEach(line => console.error(line));
+        
+        // Vérifier les logs Minecraft
+        const logsDir = path.join(mcRoot, 'logs');
+        const latestLog = path.join(logsDir, 'latest.log');
+        if (fs.existsSync(latestLog)) {
+          console.error('[INFO] Contenu de logs/latest.log:');
+          const logContent = fs.readFileSync(latestLog, 'utf8');
+          const logLines = logContent.split('\n').slice(-30);
+          logLines.forEach(line => console.error(line));
+        }
+        
+        console.error('[INFO] ========================================');
+      }
     });
+    
     launcher.on('error', (e) => {
       console.error(`[ERROR] ${e}`);
+      gameErrors += `ERROR: ${e}\n`;
     });
 
     return `Minecraft Forge ${forgeVersion} lance !\n\n${useMicrosoft ? 'Compte Microsoft connecte' : 'Mode hors ligne'}`;
